@@ -187,9 +187,8 @@ const brandTextStyle = css`
 `
 
 const iconStyle = css`
-  height: 35px;
+  height: 50px;
   margin-right: 20px;
-  filter: invert(1);
 `
 
 const modalButtonStyle = css`
