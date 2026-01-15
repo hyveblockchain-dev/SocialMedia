@@ -93,7 +93,7 @@ function MyApp({ Component, pageProps }) {
             <div className={linkContainerStyle}>
               <Link href='/'>
                 <a>
-                  <img src="/hyve-logo.png" className={iconStyle} />
+                  <img src="/hyvelogo.png" className={iconStyle} />
                 </a>
               </Link>
               <div className={brandTextStyle}>HYVE SOCIAL</div>
