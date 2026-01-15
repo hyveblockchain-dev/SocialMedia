@@ -26,11 +26,6 @@ export default function Home() {
 
   async function fetchPosts() {
     try {
-      const provider = new ethers.providers.Web3Provider(
-        (window).ethereum
-      )
-      const addresses = await provider.listAccounts()
-      
       if (profile) {
         // If user is signed in, fetch their timeline
         try {
@@ -62,28 +57,18 @@ export default function Home() {
           setLoadingState('loaded')
         } catch (error) {
           console.log('Error fetching timeline:', error)
-          setLoadingState('error')
+          setLoadingState('loaded')  // Still show empty state instead of error
+          setPosts([])
         }
-      } else if (!addresses.length) {
-        // If not signed in, fetch explore publications
-        try {
-          const response = await basicClient.query(explorePublications).toPromise()
-          const posts = response.data.explorePublications.items.filter(post => {
-            if (post.profile) {
-              post.backgroundColor = generateRandomColor()
-              return post
-            }
-          })
-          setPosts(posts)
-          setLoadingState('loaded')
-        } catch (error) {
-          console.log('Error fetching explore posts:', error)
-          setLoadingState('error')
-        }
+      } else {
+        // If not signed in, just show empty state with welcome message
+        setLoadingState('loaded')
+        setPosts([])
       }
     } catch (err) {
       console.log('Error in fetchPosts:', err)
-      setLoadingState('error')
+      setLoadingState('loaded')  // Show empty state instead of error
+      setPosts([])
     }
   }
 
