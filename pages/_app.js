@@ -171,17 +171,16 @@ const linkTextStyle = css`
   color: #ffffff;
   transition: color 0.3s;
   &:hover {
-    color: #a855f7;
+    color: #fbbf24;
   }
 `
 
 const brandTextStyle = css`
   font-weight: 800;
   font-size: 20px;
-  color: #a855f7;
   letter-spacing: 2px;
   margin-right: 40px;
-  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -239,19 +238,20 @@ const buttonStyle = css`
   border: none;
   outline: none;
   margin-left: 15px;
-  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-  color: white;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #000000;
   padding: 13px;
   border-radius: 25px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   transition: all .35s;
   width: 160px;
   letter-spacing: .75px;
   &:hover {
     transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(168, 85, 247, 0.4);
+    box-shadow: 0 10px 20px rgba(251, 191, 36, 0.5);
+    background: linear-gradient(135deg, #fcd34d 0%, #fbbf24 100%);
   }
 `
 
