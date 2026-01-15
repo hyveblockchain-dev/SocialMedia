@@ -87,7 +87,7 @@ function MyApp({ Component, pageProps }) {
       userAddress,
       profile: userProfile
     }}>
-      <div>
+      <div className={appContainerStyle}>
         <nav className={navStyle}>
           <div className={navContainerStyle}>
             <div className={linkContainerStyle}>
@@ -96,6 +96,7 @@ function MyApp({ Component, pageProps }) {
                   <img src="/icon.svg" className={iconStyle} />
                 </a>
               </Link>
+              <div className={brandTextStyle}>HYVE SOCIAL</div>
               <Link href='/'>
                 <a>
                   <p className={linkTextStyle}>Home</p>
@@ -152,6 +153,11 @@ function MyApp({ Component, pageProps }) {
   )
 }
 
+const appContainerStyle = css`
+  background-color: #000000;
+  min-height: 100vh;
+`
+
 const appLayoutStyle = css`
   width: 900px;
   margin: 0 auto;
@@ -162,11 +168,29 @@ const linkTextStyle = css`
   margin-right: 40px;
   font-weight: 600;
   font-size: 15px;
+  color: #ffffff;
+  transition: color 0.3s;
+  &:hover {
+    color: #a855f7;
+  }
+`
+
+const brandTextStyle = css`
+  font-weight: 800;
+  font-size: 20px;
+  color: #a855f7;
+  letter-spacing: 2px;
+  margin-right: 40px;
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 `
 
 const iconStyle = css`
   height: 35px;
-  margin-right: 40px;
+  margin-right: 20px;
+  filter: invert(1);
 `
 
 const modalButtonStyle = css`
@@ -179,17 +203,17 @@ const modalButtonStyle = css`
 const createPostStyle = css`
   height: 35px;
   margin-right: 5px;
+  filter: invert(1);
 `
 
 const navStyle = css`
-  background-color: white;
+  background-color: #0a0a0a;
   padding: 15px 30px;
   display: flex;
   position: fixed;
   width: 100%;
-  background-color: white;
   z-index: 1;
-  border-bottom: 1px solid #ededed;
+  border-bottom: 1px solid #1f1f1f;
 `
 
 const navContainerStyle = css`
@@ -215,19 +239,19 @@ const buttonStyle = css`
   border: none;
   outline: none;
   margin-left: 15px;
-  background-color: black;
-  color: #340036;
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  color: white;
   padding: 13px;
   border-radius: 25px;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
-  background-color: rgb(249, 92, 255);
+  font-weight: 600;
   transition: all .35s;
   width: 160px;
   letter-spacing: .75px;
   &:hover {
-    background-color: rgba(249, 92, 255, .75);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(168, 85, 247, 0.4);
   }
 `
 
