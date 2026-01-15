@@ -1,5 +1,4 @@
 import { css } from '@emotion/css'
-import { PINK } from '../theme'
 
 export function Button({
   buttonText,
@@ -14,20 +13,22 @@ export function Button({
 }
 
 const buttonStyle = css`
-border: none;
-outline: none;
-margin-left: 15px;
-color: #340036;
-padding: 17px;
-border-radius: 25px;
-cursor: pointer;
-font-size: 14px;
-font-weight: 500;
-background-color: rgb(${PINK});
-transition: all .35s;
-width: 240px;
-letter-spacing: .75px;
-&:hover {
-  background-color: rgba(${PINK}, .75);
-}
+  border: none;
+  outline: none;
+  margin-left: 15px;
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #000000;
+  padding: 17px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  transition: all .35s;
+  width: 240px;
+  letter-spacing: .75px;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(251, 191, 36, 0.5);
+    background: linear-gradient(135deg, #fcd34d 0%, #fbbf24 100%);
+  }
 `
