@@ -10,7 +10,7 @@ import { AppContext } from '../context'
 import Modal from '../components/CreatePostModal'
 
 function MyApp({ Component, pageProps }) {
-  const [connected, setConnected] = useState(true)
+  const [connected, setConnected] = useState(false)
   const [userAddress, setUserAddress] = useState()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [userProfile, setUserProfile] = useState()
