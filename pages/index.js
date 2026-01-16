@@ -1,631 +1,399 @@
 import { useState, useEffect, useContext } from 'react'
-import { useRouter } from 'next/router'
-import { createClient, basicClient, searchPublications, timeline, explorePublications } from '../api'
 import { css } from '@emotion/css'
 import { ethers } from 'ethers'
-import { Button, SearchInput, Placeholders } from '../components'
 import { AppContext } from '../context'
-import Link from 'next/link'
+import CreatePostModal from '../components/CreatePostModal'
+import HYVESOCIAL_ABI from '../abi/hyvesocial.json'
 
-const typeMap = {
-  Comment: "Comment",
-  Mirror: "Mirror",
-  Post: "Post"
-}
+const HYVESOCIAL_CONTRACT = '0xd9145CCE52D386f254917e481eB44e9943F39138'
 
 export default function Home() {
   const [posts, setPosts] = useState([])
-  const [loadingState, setLoadingState] = useState('loading')
-  const [searchString, setSearchString] = useState('')
-  const { profile } = useContext(AppContext)
-  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const { profile, address } = useContext(AppContext)
 
   useEffect(() => {
     fetchPosts()
-  }, [profile])
+  }, [])
 
   async function fetchPosts() {
     try {
-      if (profile) {
-        // If user is signed in, fetch their timeline
-        try {
-          const client = await createClient()
-          const response = await client.query(timeline, {
-            profileId: profile.id, limit: 15
-          }).toPromise()
-          
-          let posts = response.data.timeline.items.filter(post => {
-            if (post.profile) {
-              post.backgroundColor = generateRandomColor()
-              return post
-            }
-          })
-          
-          // Process profile pictures
-          posts = posts.map(post => {
-            let picture = post.profile.picture
-            if (picture && picture.original && picture.original.url) {
-              if (picture.original.url.startsWith('ipfs://')) {
-                let result = picture.original.url.substring(7, picture.original.url.length)
-                post.profile.picture.original.url = `http://lens.infura-ipfs.io/ipfs/${result}`
-              }
-            }
-            return post
-          })
-          
-          setPosts(posts)
-          setLoadingState('loaded')
-        } catch (error) {
-          console.log('Error fetching timeline:', error)
-          setLoadingState('loaded')  // Still show empty state instead of error
-          setPosts([])
-        }
-      } else {
-        // If not signed in, just show empty state with welcome message
-        setLoadingState('loaded')
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const contract = new ethers.Contract(
+        HYVESOCIAL_CONTRACT,
+        HYVESOCIAL_ABI,
+        provider
+      )
+
+      // Get total number of posts
+      const totalPosts = await contract.getTotalPosts()
+      console.log('Total posts:', totalPosts.toString())
+
+      if (totalPosts === BigInt(0)) {
         setPosts([])
+        setLoading(false)
+        return
       }
-    } catch (err) {
-      console.log('Error in fetchPosts:', err)
-      setLoadingState('loaded')  // Show empty state instead of error
-      setPosts([])
-    }
-  }
 
-  async function searchForPost() {
-    setLoadingState('searching')
-    try {
-      const urqlClient = await createClient()
-      const response = await urqlClient.query(searchPublications, {
-        query: searchString, type: 'PUBLICATION'
-      }).toPromise()
-      
-      const postData = response.data.search.items.filter(post => {
-        if (post.profile) {
-          post.backgroundColor = generateRandomColor()
-          return post
+      // Fetch last 20 posts
+      const postsToFetch = totalPosts > BigInt(20) ? 20 : Number(totalPosts)
+      const fetchedPosts = []
+
+      for (let i = 0; i < postsToFetch; i++) {
+        const postId = totalPosts - BigInt(i) - BigInt(1)
+        try {
+          const postData = await contract.getPost(postId)
+          
+          // Get author profile
+          let authorUsername = 'Unknown'
+          try {
+            const profileData = await contract.getProfile(postData[1])
+            authorUsername = profileData[0] || 'Unknown'
+          } catch (e) {
+            console.log('Could not fetch author profile')
+          }
+
+          fetchedPosts.push({
+            id: postData[0].toString(),
+            author: postData[1],
+            authorUsername: authorUsername,
+            content: postData[2],
+            mediaUrl: postData[3],
+            timestamp: postData[4].toString(),
+            likes: postData[5].toString()
+          })
+        } catch (error) {
+          console.error(`Error fetching post ${postId}:`, error)
         }
-      })
-      
-      setPosts(postData)
-      if (!postData.length) {
-        setLoadingState('no-results')
-      } else {
-        setLoadingState('loaded')
       }
+
+      setPosts(fetchedPosts)
     } catch (error) {
-      console.log('Error searching:', error)
-      setLoadingState('error')
+      console.error('Error fetching posts:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  function handleKeyDown(e) {
-    if (e.key === 'Enter') {
-      searchForPost()
+  async function likePost(postId) {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+      const contract = new ethers.Contract(
+        HYVESOCIAL_CONTRACT,
+        HYVESOCIAL_ABI,
+        signer
+      )
+
+      const tx = await contract.likePost(postId)
+      alert('Liking post... Waiting for confirmation')
+      await tx.wait()
+      alert('Post liked! 🎉')
+      
+      // Refresh posts
+      await fetchPosts()
+    } catch (error) {
+      console.error('Error liking post:', error)
+      if (error.message.includes('Already liked')) {
+        alert('You already liked this post!')
+      } else {
+        alert('Failed to like post')
+      }
     }
   }
 
-  function generateRandomColor() {
-    const colors = [
-      '#FFB6C1', '#98D8C8', '#F6E58D', '#BADC58', 
-      '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
-      '#DDA15E', '#BC6C25'
-    ]
-    return colors[Math.floor(Math.random() * colors.length)]
+  function formatTimestamp(timestamp) {
+    const date = new Date(parseInt(timestamp) * 1000)
+    const now = new Date()
+    const diff = now - date
+    
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+    
+    if (minutes < 1) return 'Just now'
+    if (minutes < 60) return `${minutes}m ago`
+    if (hours < 24) return `${hours}h ago`
+    return `${days}d ago`
   }
 
   return (
-    <div>
-      <div className={searchContainerStyle}>
-        <SearchInput
-          placeholder='Search'
-          onChange={e => setSearchString(e.target.value)}
-          value={searchString}
-          onKeyDown={handleKeyDown}
-        />
-        <Button
-          buttonText="SEARCH POSTS"
-          onClick={searchForPost}
-        />
-      </div>
+    <div className={containerStyle}>
+      {isModalOpen && <CreatePostModal setIsModalOpen={setIsModalOpen} />}
       
-      {/* Welcome/Empty State Section */}
-      {loadingState === 'loaded' && posts.length === 0 && (
-        <div className={emptyStateContainerStyle}>
-          <div className={emptyStateCardStyle}>
-            <div className={iconContainerStyle}>
-              <svg className={iconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-            
-            <h2 className={emptyStateTitleStyle}>
-              {profile ? 'Your Feed is Empty' : 'Welcome to Hyve Social!'}
-            </h2>
-            
-            <p className={emptyStateDescriptionStyle}>
-              {profile 
-                ? "You're not following anyone yet, or no one has posted recently. Start exploring profiles and building your network!"
-                : "Connect your wallet to start exploring the decentralized social network built on Lens Protocol."
-              }
-            </p>
-            
-            <div className={actionsContainerStyle}>
-              {profile ? (
-                <>
-                  <Link href="/profiles">
-                    <a>
-                      <button className={primaryButtonStyle}>
-                        <svg className={buttonIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        Explore Profiles
-                      </button>
-                    </a>
-                  </Link>
-                  <Link href={`/profile/${profile.id}`}>
-                    <a>
-                      <button className={secondaryButtonStyle}>
-                        <svg className={buttonIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        View Your Profile
-                      </button>
-                    </a>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <button className={primaryButtonStyle} onClick={() => window.location.reload()}>
-                    <svg className={buttonIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Get Started
-                  </button>
-                  <Link href="/profiles">
-                    <a>
-                      <button className={secondaryButtonStyle}>
-                        <svg className={buttonIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                        Browse Profiles
-                      </button>
-                    </a>
-                  </Link>
-                </>
-              )}
-            </div>
-            
-            {/* Feature Highlights */}
-            <div className={featuresContainerStyle}>
-              <div className={featureItemStyle}>
-                <div className={featureIconStyle}>🔒</div>
-                <h4 className={featureTitleStyle}>Decentralized</h4>
-                <p className={featureDescStyle}>Your data, your control. Built on blockchain technology.</p>
-              </div>
-              <div className={featureItemStyle}>
-                <div className={featureIconStyle}>🌐</div>
-                <h4 className={featureTitleStyle}>Web3 Native</h4>
-                <p className={featureDescStyle}>Connect with your crypto wallet and own your identity.</p>
-              </div>
-              <div className={featureItemStyle}>
-                <div className={featureIconStyle}>🚀</div>
-                <h4 className={featureTitleStyle}>Lens Protocol</h4>
-                <p className={featureDescStyle}>Powered by the leading decentralized social graph.</p>
-              </div>
-            </div>
-          </div>
+      <div className={searchContainerStyle}>
+        <input placeholder="Search" className={searchInputStyle} />
+        <button className={searchButtonStyle}>SEARCH POSTS</button>
+      </div>
+
+      {profile && (
+        <div className={createPostButtonContainer}>
+          <button 
+            className={createPostButton}
+            onClick={() => setIsModalOpen(true)}
+          >
+            ✏️ Create Post
+          </button>
         </div>
       )}
-      
-      <div className={listItemContainerStyle}>
-        {
-          loadingState === 'no-results' && (
-            <div className={noResultsContainerStyle}>
-              <svg className={noResultsIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <h2 className={noResultsTitleStyle}>No results found</h2>
-              <p className={noResultsDescStyle}>Try searching for something else or browse profiles to discover content.</p>
-              <Link href="/profiles">
-                <a>
-                  <button className={browseButtonStyle}>Browse Profiles</button>
-                </a>
-              </Link>
-            </div>
-          )
-        }
-        {
-          loadingState === 'loading' && <Placeholders number={6} />
-        }
-        {
-          loadingState === 'searching' && <Placeholders number={3} />
-        }
-        {
-          loadingState === 'error' && (
-            <div className={errorContainerStyle}>
-              <svg className={errorIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <h2 className={errorTitleStyle}>Error loading posts</h2>
-              <p className={errorDescStyle}>Please try refreshing the page or connect your wallet.</p>
-              <button className={retryButtonStyle} onClick={fetchPosts}>
-                <svg className={buttonIconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                Try Again
+
+      <div className={feedContainerStyle}>
+        {loading ? (
+          <div className={emptyStateStyle}>
+            <p className={emptyIconStyle}>⏳</p>
+            <h2>Loading posts...</h2>
+          </div>
+        ) : posts.length === 0 ? (
+          <div className={emptyStateStyle}>
+            <p className={emptyIconStyle}>👥</p>
+            <h2>No Posts Yet</h2>
+            <p className={emptyTextStyle}>
+              Be the first to post on Hyve Social!
+            </p>
+            {profile && (
+              <button 
+                className={emptyButtonStyle}
+                onClick={() => setIsModalOpen(true)}
+              >
+                Create Your First Post
               </button>
-            </div>
-          )
-        }
-        {
-          loadingState === 'loaded' && posts.length > 0 && posts.map((post, index) => (
-            <Link href={`/profile/${post.profile.id || post.profile.profileId}`} key={index}>
-              <a>
-                <div className={listItemStyle}>
-                  <p className={itemTypeStyle}>{typeMap[post.__typename]}</p>
-                  <div className={profileContainerStyle}>
-                    {
-                      post.profile.picture && post.profile.picture.original ? (
-                        <img src={post.profile.picture.original.url} className={profileImageStyle} />
-                      ) : (
-                        <div
-                          className={
-                            css`
-                              ${placeholderStyle};
-                              background-color: ${post.backgroundColor};
-                            `
-                          }
-                        />
-                      )
-                    }
-                  </div>
-                  <div>
-                    <div className={profileInfoStyle}>
-                      <h3 className={nameStyle}>{post.profile.name}</h3>
-                      <p className={handleStyle}>{post.profile.handle}</p>
-                    </div>
-                    <div>
-                      <p className={latestPostStyle}>{trimString(post.metadata.content, 200)}</p>
-                    </div>
-                  </div>
+            )}
+          </div>
+        ) : (
+          posts.map((post) => (
+            <div key={post.id} className={postStyle}>
+              <div className={postHeaderStyle}>
+                <div>
+                  <p className={authorStyle}>@{post.authorUsername}</p>
+                  <p className={addressTextStyle}>
+                    {post.author.slice(0, 6)}...{post.author.slice(-4)}
+                  </p>
                 </div>
-              </a>
-            </Link>
+                <p className={timestampStyle}>{formatTimestamp(post.timestamp)}</p>
+              </div>
+              
+              <p className={postContentStyle}>{post.content}</p>
+              
+              <div className={postFooterStyle}>
+                <button 
+                  className={likeButtonStyle}
+                  onClick={() => profile && likePost(post.id)}
+                  disabled={!profile}
+                >
+                  ❤️ {post.likes}
+                </button>
+              </div>
+            </div>
           ))
-        }
+        )}
       </div>
+
+      {!profile && !loading && (
+        <div className={signInPromptStyle}>
+          <p>👆 Sign in to create posts and interact!</p>
+        </div>
+      )}
     </div>
   )
 }
 
-const trimString = (string, length) => {
-  if (!string) return ''
-  if (string.length <= length) {
-    return string
-  }
-  return string.substring(0, length) + '...'
-}
+const createPostButtonContainer = css`
+  max-width: 800px;
+  margin: 0 auto 20px auto;
+`
 
-function generateRandomColor() {
-  let randomColor = Math.floor(Math.random() * 16777215).toString(16);
-  randomColor = `#${randomColor}`
-  return randomColor
-}
+const createPostButton = css`
+  width: 100%;
+  padding: 15px;
+  background-color: rgb(249, 92, 255);
+  color: #340036;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  
+  &:hover {
+    background-color: rgba(249, 92, 255, 0.85);
+    transform: translateY(-2px);
+  }
+`
+
+const signInPromptStyle = css`
+  text-align: center;
+  margin-top: 40px;
+  padding: 20px;
+  background-color: rgba(249, 92, 255, 0.1);
+  border-radius: 10px;
+  max-width: 800px;
+  margin: 40px auto;
+  
+  p {
+    color: #666;
+    font-size: 16px;
+    margin: 0;
+  }
+`
+
+const containerStyle = css`
+  padding: 40px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+`
 
 const searchContainerStyle = css`
-  padding: 40px 0px 30px;
   display: flex;
   justify-content: center;
-  align-items: center;
+  margin-bottom: 40px;
+  gap: 10px;
 `
 
-const listItemContainerStyle = css`
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 80px;
-`
-
-const listItemStyle = css`
-  background-color: #1a1a1a;
-  margin: 15px 0px;
-  padding: 20px 30px;
-  border-radius: 15px;
-  border: 1px solid #2a2a2a;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: row;
-  cursor: pointer;
-  position: relative;
-  &:hover {
-    background-color: #252525;
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(218, 165, 32, 0.1);
+const searchInputStyle = css`
+  padding: 15px 20px;
+  border-radius: 50px;
+  border: 2px solid #e0e0e0;
+  width: 500px;
+  font-size: 16px;
+  outline: none;
+  
+  &:focus {
+    border-color: rgb(249, 92, 255);
   }
 `
 
-const profileContainerStyle = css`
-  width: 60px;
-  margin-right: 20px;
-`
-
-const profileImageStyle = css`
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid #DAA520;
-`
-
-const placeholderStyle = css`
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  border: 2px solid #DAA520;
-`
-
-const nameStyle = css`
-  margin: 0;
-  font-weight: 600;
-  font-size: 16px;
-  color: #DAA520;
-`
-
-const handleStyle = css`
-  margin: 5px 0px;
-  color: #888;
-  font-size: 14px;
-`
-
-const latestPostStyle = css`
-  margin: 15px 0px 0px;
-  padding: 0px;
-  color: #e0e0e0;
-  font-size: 14px;
-  line-height: 1.6;
-  word-wrap: break-word;
-`
-
-const itemTypeStyle = css`
-  position: absolute;
-  top: 20px;
-  right: 25px;
-  font-size: 11px;
-  font-weight: 600;
+const searchButtonStyle = css`
   background-color: #DAA520;
-  color: #000;
-  padding: 4px 10px;
-  border-radius: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-`
-
-const profileInfoStyle = css`
-  display: flex;
-  flex-direction: column;
-`
-
-// Empty State Styles
-const emptyStateContainerStyle = css`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 500px;
-  padding: 40px 20px;
-`
-
-const emptyStateCardStyle = css`
-  background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
-  border-radius: 20px;
-  padding: 60px 40px;
-  max-width: 800px;
-  width: 100%;
-  border: 1px solid #2a2a2a;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  text-align: center;
-`
-
-const iconContainerStyle = css`
-  display: flex;
-  justify-content: center;
-  margin-bottom: 30px;
-`
-
-const iconStyle = css`
-  width: 80px;
-  height: 80px;
-  color: #DAA520;
-  opacity: 0.9;
-`
-
-const emptyStateTitleStyle = css`
-  font-size: 32px;
-  font-weight: 700;
-  color: #DAA520;
-  margin: 0 0 20px 0;
-`
-
-const emptyStateDescriptionStyle = css`
-  font-size: 16px;
-  color: #aaa;
-  line-height: 1.6;
-  margin: 0 0 40px 0;
-  max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
-`
-
-const actionsContainerStyle = css`
-  display: flex;
-  gap: 15px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 50px;
-`
-
-const primaryButtonStyle = css`
-  background-color: #DAA520;
-  color: #000;
+  color: white;
   border: none;
-  padding: 14px 32px;
-  border-radius: 30px;
-  font-size: 16px;
+  padding: 15px 30px;
+  border-radius: 50px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  transition: all 0.3s;
   
   &:hover {
-    background-color: #C8941D;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(218, 165, 32, 0.4);
+    background-color: #C4941A;
   }
 `
 
-const secondaryButtonStyle = css`
-  background-color: transparent;
-  color: #DAA520;
-  border: 2px solid #DAA520;
-  padding: 12px 30px;
-  border-radius: 30px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+const feedContainerStyle = css`
+  max-width: 800px;
+  margin: 0 auto;
+`
+
+const postStyle = css`
+  background-color: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
   
   &:hover {
-    background-color: rgba(218, 165, 32, 0.1);
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 `
 
-const buttonIconStyle = css`
-  width: 20px;
-  height: 20px;
-`
-
-const featuresContainerStyle = css`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 30px;
-  margin-top: 20px;
-`
-
-const featureItemStyle = css`
-  text-align: center;
-`
-
-const featureIconStyle = css`
-  font-size: 40px;
+const postHeaderStyle = css`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 15px;
 `
 
-const featureTitleStyle = css`
+const authorStyle = css`
+  font-weight: 700;
   font-size: 18px;
-  font-weight: 600;
-  color: #e0e0e0;
-  margin: 0 0 10px 0;
+  color: #1a1a1a;
+  margin: 0 0 5px 0;
 `
 
-const featureDescStyle = css`
-  font-size: 14px;
-  color: #888;
-  line-height: 1.5;
+const addressTextStyle = css`
+  font-size: 12px;
+  color: #999;
   margin: 0;
 `
 
-// No Results Styles
-const noResultsContainerStyle = css`
-  text-align: center;
-  padding: 80px 20px;
+const timestampStyle = css`
+  color: #999;
+  font-size: 14px;
+  margin: 0;
 `
 
-const noResultsIconStyle = css`
-  width: 64px;
-  height: 64px;
-  color: #666;
-  margin: 0 auto 20px;
-`
-
-const noResultsTitleStyle = css`
-  font-size: 24px;
-  font-weight: 600;
-  color: #e0e0e0;
-  margin: 0 0 10px 0;
-`
-
-const noResultsDescStyle = css`
+const postContentStyle = css`
   font-size: 16px;
-  color: #888;
-  margin: 0 0 30px 0;
+  line-height: 1.6;
+  color: #333;
+  margin: 15px 0;
+  white-space: pre-wrap;
 `
 
-const browseButtonStyle = css`
-  background-color: #DAA520;
-  color: #000;
+const postFooterStyle = css`
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #f0f0f0;
+`
+
+const likeButtonStyle = css`
+  background: none;
   border: none;
-  padding: 12px 30px;
-  border-radius: 25px;
-  font-size: 15px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  font-size: 16px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
   
-  &:hover {
-    background-color: #C8941D;
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(218, 165, 32, 0.3);
+  &:hover:not(:disabled) {
+    color: rgb(249, 92, 255);
+    transform: scale(1.1);
+  }
+  
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 `
 
-// Error Styles
-const errorContainerStyle = css`
+const emptyStateStyle = css`
   text-align: center;
-  padding: 80px 20px;
+  padding: 60px 20px;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 `
 
-const errorIconStyle = css`
-  width: 64px;
-  height: 64px;
-  color: #ff6b6b;
-  margin: 0 auto 20px;
+const emptyIconStyle = css`
+  font-size: 80px;
+  margin-bottom: 20px;
 `
 
-const errorTitleStyle = css`
-  font-size: 24px;
-  font-weight: 600;
-  color: #ff6b6b;
-  margin: 0 0 10px 0;
-`
-
-const errorDescStyle = css`
+const emptyTextStyle = css`
+  color: #666;
   font-size: 16px;
-  color: #888;
-  margin: 0 0 30px 0;
+  margin: 15px 0;
 `
 
-const retryButtonStyle = css`
-  background-color: #ff6b6b;
-  color: #fff;
+const emptyButtonStyle = css`
+  margin-top: 20px;
+  padding: 15px 30px;
+  background-color: rgb(249, 92, 255);
+  color: #340036;
   border: none;
-  padding: 12px 30px;
-  border-radius: 25px;
-  font-size: 15px;
+  border-radius: 10px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  transition: all 0.3s;
   
   &:hover {
-    background-color: #ff5252;
+    background-color: rgba(249, 92, 255, 0.85);
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(255, 107, 107, 0.3);
   }
 `
