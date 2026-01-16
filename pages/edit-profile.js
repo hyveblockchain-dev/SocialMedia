@@ -1,4 +1,4 @@
-a// Page disabled - old Lens Protocol code
+fexport default function EditProfilea// Page disabled - old Lens Protocol code
 export default function EditProfile() {
     return <div>Edit Profile page is disabled</div>
 }import { useState, useContext } from 'react'
@@ -85,7 +85,10 @@ export default function EditProfile() {
 
     const tx = await contract.setProfileMetadataURIWithSig({
       profileId: profile.id,
-      metadata: newMetadataURI,
+      metadata: newMetadataURI,a// Page disabled - old Lens Protocol code removed
+          export default function EditProfile() {
+          return <div>Edit Profile page is disabled</div>
+    }
       sig: {
         v,
         r,
