@@ -1,126 +1,129 @@
-import { useContext, useRef } from 'react'
+import { useState, useRef, useContext } from 'react'
 import { css } from '@emotion/css'
 import { ethers } from 'ethers'
-import { getSigner } from '../utils'
-import { LENS_HUB_CONTRACT_ADDRESS, signCreatePostTypedData } from '../api'
 import { AppContext } from '../context'
-import LENSHUB from '../abi/lenshub'
-import { create } from 'ipfs-http-client'
-import { v4 as uuid } from 'uuid'
-import { refreshAuthToken, splitSignature } from '../utils'
+import HYVESOCIAL_ABI from '../abi/hyvesocial.json'
 
-const projectId = process.env.NEXT_PUBLIC_PROJECT_ID
-const projectSecret = process.env.NEXT_PUBLIC_PROJECT_SECRET
-const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
+const HYVESOCIAL_CONTRACT = '0xd9145CCE52D386f254917e481eB44e9943F39138'
 
-const client = create({
-  host: 'ipfs.infura.io',
-  port: 5001,
-  protocol: 'https',
-  headers: {
-      authorization: auth,
-  },
-})
-
-export default function CreatePostModal({
-  setIsModalOpen
-}) {
-  const { profile } = useContext(AppContext)
+export default function CreatePostModal({ setIsModalOpen }) {
+  const { profile, address } = useContext(AppContext)
+  const [creating, setCreating] = useState(false)
   const inputRef = useRef(null)
-  async function uploadToIPFS() {
-    const metaData = {
-      version: '2.0.0',
-      content: inputRef.current.innerHTML,
-      description: inputRef.current.innerHTML,
-      name: `Post by @${profile.handle}`,
-      external_url: `https://lenster.xyz/u/${profile.handle}`,
-      metadata_id: uuid(),
-      mainContentFocus: 'TEXT_ONLY',
-      attributes: [],
-      locale: 'en-US',
-    }
 
-    const added = await client.add(JSON.stringify(metaData))
-    const uri = `https://ipfs.infura.io/ipfs/${added.path}`
-    return uri
+  // Check if profile exists
+  if (!profile) {
+    return (
+      <div className={containerStyle}>
+        <div className={contentContainerStyle}>
+          <div className={topBarStyle}>
+            <div className={topBarTitleStyle}>
+              <p>Profile Required</p>
+            </div>
+            <div onClick={() => setIsModalOpen(false)}>
+              <img src="/close.svg" className={createPostIconStyle} />
+            </div>
+          </div>
+          <div className={contentStyle}>
+            <div className={errorMessageStyle}>
+              <p>⚠️ You need to create a profile first!</p>
+              <p>Please create your profile to start posting.</p>
+            </div>
+            <div className={buttonContainerStyle}>
+              <button className={buttonStyle} onClick={() => setIsModalOpen(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   async function savePost() {
-    const contentURI = await uploadToIPFS()
-    const { accessToken } = await refreshAuthToken()
-    const createPostRequest = {
-      profileId: profile.id,
-      contentURI,
-      collectModule: {
-        freeCollectModule: { followerOnly: true }
-      },
-      referenceModule: {
-        followerOnlyReferenceModule: false
-      },
+    const content = inputRef.current.innerText || inputRef.current.textContent
+    
+    if (!content || content.trim().length === 0) {
+      alert('Please enter some content for your post')
+      return
     }
 
     try {
-      const signedResult = await signCreatePostTypedData(createPostRequest, accessToken)
-      const typedData = signedResult.result.typedData
-      const { v, r, s } = splitSignature(signedResult.signature)
+      setCreating(true)
 
+      // Get provider and signer
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
+
+      // Create contract instance
       const contract = new ethers.Contract(
-        LENS_HUB_CONTRACT_ADDRESS,
-        LENSHUB,
-        getSigner()
+        HYVESOCIAL_CONTRACT,
+        HYVESOCIAL_ABI,
+        signer
       )
 
-      const tx = await contract.postWithSig({
-        profileId: typedData.value.profileId,
-        contentURI: typedData.value.contentURI,
-        collectModule: typedData.value.collectModule,
-        collectModuleInitData: typedData.value.collectModuleInitData,
-        referenceModule: typedData.value.referenceModule,
-        referenceModuleInitData: typedData.value.referenceModuleInitData,
-        sig: {
-          v,
-          r,
-          s,
-          deadline: typedData.value.deadline,
-        },
-      })
+      console.log('Creating post on Hyve Blockchain...')
 
+      // Call createPost function
+      const tx = await contract.createPost(content.trim(), '') // Empty mediaUrl for now
+      
+      console.log('Transaction sent:', tx.hash)
+      alert('Transaction sent! Waiting for confirmation...')
+
+      // Wait for transaction to be mined
       await tx.wait()
-      console.log('successfully created post: tx hash', tx.hash)
+      
+      console.log('Post created successfully!')
+      alert('Post created successfully! 🎉')
+      
       setIsModalOpen(false)
       
+      // Reload the page to show new post
+      window.location.reload()
+      
     } catch (err) {
-      console.log('error: ', err)
+      console.error('Error creating post:', err)
+      
+      if (err.code === 'ACTION_REJECTED') {
+        alert('Transaction cancelled')
+      } else if (err.message.includes('Profile does not exist')) {
+        alert('Profile not found. Please create a profile first.')
+      } else {
+        alert('Failed to create post. Check console for details.')
+      }
+    } finally {
+      setCreating(false)
     }
   }
+
   return (
     <div className={containerStyle}>
       <div className={contentContainerStyle}>
         <div className={topBarStyle}>
           <div className={topBarTitleStyle}>
-            <p>
-              Create post
-            </p>
+            <p>Create post</p>
           </div>
-          <div onClick={() => setIsModalOpen(false)}>
-            <img
-              src="/close.svg"
-              className={createPostIconStyle}
-            />
+          <div onClick={() => !creating && setIsModalOpen(false)}>
+            <img src="/close.svg" className={createPostIconStyle} />
           </div>
         </div>
         <div className={contentStyle}>
           <div className={bottomContentStyle}>
-            <div
-              className={postInputStyle}
-              contentEditable
+            <div 
+              className={postInputStyle} 
+              contentEditable={!creating}
               ref={inputRef}
-            />
+              suppressContentEditableWarning
+            >
+            </div>
             <div className={buttonContainerStyle}>
-              <button
-                className={buttonStyle}
+              <button 
+                className={buttonStyle} 
                 onClick={savePost}
-              >Create Post</button>
+                disabled={creating}
+              >
+                {creating ? 'Creating...' : 'Create Post'}
+              </button>
             </div>
           </div>
         </div>
@@ -129,10 +132,19 @@ export default function CreatePostModal({
   )
 }
 
+const errorMessageStyle = css`
+  padding: 20px;
+  text-align: center;
+  p {
+    margin: 10px 0;
+    line-height: 1.6;
+  }
+`
+
 const buttonStyle = css`
   border: none;
   outline: none;
-  background-color: rgb(249, 92, 255);;
+  background-color: rgb(249, 92, 255);
   padding: 13px 24px;
   color: #340036;
   border-radius: 10px;
@@ -141,6 +153,10 @@ const buttonStyle = css`
   transition: all .35s;
   &:hover {
     background-color: rgba(249, 92, 255, .75);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `
 
@@ -154,15 +170,18 @@ const postInputStyle = css`
   border: 1px solid rgba(0, 0, 0, .14);
   border-radius: 8px;
   width: 100%;
-  min-height: 60px;
+  min-height: 100px;
   padding: 12px 14px;
   font-weight: 500;
+  outline: none;
+  &:empty:before {
+    content: "What's on your mind?";
+    color: #999;
+  }
 `
 
 const bottomContentStyle = css`
   margin-top: 10px;
-  max-height: 300px;
-  overflow: scroll;
 `
 
 const topBarStyle = css`
@@ -186,6 +205,7 @@ const contentContainerStyle = css`
   border-radius: 10px;
   border: 1px solid rgba(0, 0, 0, .15);
   width: 700px;
+  max-width: 90vw;
 `
 
 const containerStyle = css`
@@ -199,9 +219,6 @@ const containerStyle = css`
   justify-content: center;
   align-items: center;
   background-color: rgba(0, 0, 0, .35);
-  h1 {
-    margin: 0;
-  }
 `
 
 const contentStyle = css`
