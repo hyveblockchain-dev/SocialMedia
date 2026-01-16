@@ -1,4 +1,5 @@
-import { createClient as createUrqlClient } from 'urql'
+a// Old Lens Protocol API removed - now using Hyve smart contract directly
+export {}import { createClient as createUrqlClient } from 'urql'
 
 export const APIURL = "https://api.lens.dev"
 export const STORAGE_KEY = "LH_STORAGE_KEY"
