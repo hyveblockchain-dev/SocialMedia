@@ -55,11 +55,13 @@ function MyApp({ Component, pageProps }) {
 
   async function signIn() {
     try {
-      const accounts = await window.ethereum.send(
-        "eth_requestAccounts"
-      )
+      // FIXED: Use modern .request() instead of deprecated .send()
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts'
+      })
       setConnected(true)
-      const account = accounts.result[0]
+      // FIXED: accounts is now directly the array, not accounts.result
+      const account = accounts[0]
       setUserAddress(account)
       const urqlClient = await createClient()
       const response = await urqlClient.query(getChallenge, {
@@ -143,9 +145,7 @@ function MyApp({ Component, pageProps }) {
         </div>
         {
           isModalOpen && (
-            <Modal
-              setIsModalOpen={setIsModalOpen}
-            />
+            <Modal setIsModalOpen={setIsModalOpen} />
           )
         }
       </div>
