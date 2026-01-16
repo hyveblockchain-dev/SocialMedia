@@ -1,4 +1,7 @@
-import { useState, useContext } from 'react'
+a// Page disabled - old Lens Protocol code
+export default function EditProfile() {
+    return <div>Edit Profile page is disabled</div>
+}import { useState, useContext } from 'react'
 import { ethers } from 'ethers'
 import { AppContext } from '../context'
 import { css } from '@emotion/css'
