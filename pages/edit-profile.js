@@ -86,7 +86,11 @@ export default function EditProfile() {
     const tx = await contract.setProfileMetadataURIWithSig({
       profileId: profile.id,
       metadata: newMetadataURI,a// Page disabled - old Lens Protocol code removed
-          export default function EditProfile() {
+          export default function EditProfile() {a// This page is disabled - old Lens Protocol code removed
+                                                 export default function EditProfile() {
+                                                       return <div>Edit Profile page is disabled</div>
+                                                 }
+                                                 
           return <div>Edit Profile page is disabled</div>
     }
       sig: {
